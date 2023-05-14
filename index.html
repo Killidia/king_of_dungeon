@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>King of dungeon</title>
+
+    <script src="//cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+  </head>
+  <body>
+    <script>
+      // config of game
+      const config = {
+        type: Phaser.AUTO,
+        width: 25 * 16,
+        height: 15 * 16,
+        zoom: 3,
+        pixelArt: true,
+        physics: {
+          default: "arcade",
+          arcade: {
+            gravity: { y: 0 },
+            debug: false,
+          },
+        },
+        scene: {
+          preload: preload,
+          create: create,
+          update: update,
+        },
+      };
+
+      let ennemies;
+      let score = 0;
+      let scoreText;
+
+      // create game
+      const game = new Phaser.Game(config);
+
+      function preload() {
+        this.load.image("king", "assets/sprites/king.png");
+        this.load.image("tilemap", "assets/tilemaps/tiles/dungeon-16-16.png");
+        this.load.spritesheet("ennemy1", "assets/spritesheets/ennemy1.png", {
+          frameWidth: 24,
+          frameHeight: 24,
+        });
+
+        this.load.spritesheet("ennemy2", "assets/spritesheets/ennemy2.png", {
+          frameWidth: 24,
+          frameHeight: 24,
+        });
+
+        this.load.atlas(
+          "a-king",
+          "assets/spritesheets/a-king.png",
+          "assets/spritesheets/a-king_atlas.json"
+        );
+      }
+
+      function create() {
+        // Load a map from a 2D array of tile indices
+        const level = new Array(15).fill(new Array(25).fill(129));
+
+        // When loading from an array, make sure to specify the tileWidth and tileHeight
+        const map = this.make.tilemap({
+          data: level,
+          tileWidth: 16,
+          tileHeight: 16,
+        });
+        const tiles = map.addTilesetImage("tilemap");
+        const layer = map.createLayer(0, tiles, 0, 0);
+
+        // Create a sprite at the center of the screen using the 'king' image.
+        this.king = this.physics.add.sprite(
+          config.width / 2,
+          config.height / 2,
+          "king"
+        );
+
+        // create animations for king
+        this.anims.create({
+          key: "run",
+          frames: this.anims.generateFrameNames("a-king", {
+            prefix: "run-",
+            end: 7,
+          }),
+          frameRate: 8,
+        });
+
+        this.anims.create({
+          key: "attack",
+          frames: this.anims.generateFrameNames("a-king", {
+            prefix: "attack-",
+            end: 2,
+          }),
+          frameRate: 8,
+        });
+
+        // spawn ennemies randomly on the map all 2 seconds
+        ennemies = this.physics.add.group();
+
+        this.time.addEvent({
+          delay: 1000,
+          callback: () => {
+            const ennemy = this.physics.add.sprite(
+              Math.random() * config.width,
+              Math.random() * config.height,
+              "ennemy1"
+            );
+
+            ennemies.add(ennemy);
+          },
+          callbackScope: this,
+          loop: true,
+        });
+
+        // create ennemies animation
+        this.anims.create({
+          key: "ennemy-run",
+          frames: this.anims.generateFrameNumbers("ennemy1", {
+            start: 0,
+            end: 9,
+          }),
+          frameRate: 8,
+          repeat: -1,
+        });
+
+        // spawn score text
+        scoreText = this.add.text(16, 16, "score: 0", {
+          fontSize: "16px",
+          fill: "#fff",
+        });
+      }
+
+      function update(time, delta) {
+        // king mouvement
+        this.king.body.setVelocity(0);
+        cursors = this.input.keyboard.createCursorKeys();
+
+        if (cursors.left.isDown) {
+          this.king.body.setVelocityX(-100);
+
+          // offset
+          this.king.body.setOffset(32, 15);
+
+          // check flip
+          this.king.flipX = true;
+
+          !this.anims.isPlaying && this.king.anims.play("run", true);
+        } else if (cursors.right.isDown) {
+          this.king.body.setVelocityX(100);
+
+          // offset
+          this.king.body.setOffset(8, 15);
+
+          // check flip
+          this.king.flipX = false;
+
+          !this.anims.isPlaying && this.king.anims.play("run", true);
+        }
+
+        if (cursors.up.isDown) {
+          this.king.body.setVelocityY(-100);
+          !this.anims.isPlaying && this.king.anims.play("run", true);
+        } else if (cursors.down.isDown) {
+          this.king.body.setVelocityY(100);
+          !this.anims.isPlaying && this.king.anims.play("run", true);
+        }
+
+        // ennemies mouvement
+        ennemies.children.iterate((ennemy) => {
+          this.physics.moveToObject(ennemy, this.king, 50);
+
+          if (this.king.flipX) {
+            ennemy.flipX = true;
+          } else {
+            ennemy.flipX = false;
+          }
+
+          ennemy.anims.play("ennemy-run", true);
+        });
+
+        // when ennemy touch king, king die
+        this.physics.add.overlap(
+          this.king,
+          ennemies,
+          () => {
+            this.king.destroy();
+          },
+          null,
+          this
+        );
+
+        // when king press spacebar attack, if ennemy is in range, kill it
+        if (Phaser.Input.Keyboard.JustDown(cursors.space)) {
+          this.king.anims.play("attack", true);
+
+          ennemies.children.iterate((ennemy) => {
+            if (
+              this.king.x + 50 > ennemy.x &&
+              this.king.x - 50 < ennemy.x &&
+              this.king.y + 50 > ennemy.y &&
+              this.king.y - 50 < ennemy.y
+            ) {
+              ennemy.disableBody(true, true);
+              score += 10;
+              scoreText.setText("Score: " + score);
+            }
+          });
+        }
+      }
+    </script>
+  </body>
+</html>
